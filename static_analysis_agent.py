@@ -477,13 +477,12 @@ if __name__ == "__main__":
         }
 
         thread_id = str(uuid.uuid4())
-        config = {"configurable": {"thread_id": thread_id}} 
         
         print(f"Starting analysis for PDF: {pdf_to_analyze} with Thread ID: {thread_id}")
 
         final_event_state = None # Variable to store the last state from the stream
 
-        for event_idx, event_data in enumerate(app.stream(initial_input, config=config, stream_mode="values")):
+        for event_idx, event_data in enumerate(app.stream(initial_input, stream_mode="values")):
             print(f"\n--- Event {event_idx} ---")
             
             # In stream_mode="values", event_data is the full state dictionary after a node executes

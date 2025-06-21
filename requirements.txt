@@ -4,7 +4,7 @@ langchain-openai==0.3.18
 langgraph==0.4.7
 langgraph-checkpoint==2.0.26
 langgraph-prebuilt==0.2.2
-langgraph-cli[inmem]==0.0.19
+langgraph-cli[inmem]==0.2.10
 openai==1.82.1
 # optional runtime tracing
 langsmith==0.3.43

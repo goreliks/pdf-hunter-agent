@@ -24,7 +24,7 @@ load_dotenv()
 from static_analysis_prompts import SYSTEM_PROMPT_CONTENT, PLANNER_PROMPT_TEMPLATE, INTERPRETER_PROMPT_TEMPLATE
 
 # ---------- TOKEN-BUDGET CONSTANTS ----------
-MAX_RAW_CHARS      = 50000   # keep at most this many characters of the last tool output (increased for hex decoding)
+MAX_RAW_CHARS      = 100000  # keep at most this many characters of the last tool output (increased for hex decoding)
 MAX_FINDINGS       = 30     # keep only the newest N findings per prompt
 MAX_DIALOG_TURNS   = 6      # last N AI/Human messages + the (mini) system prompt
 # -------------------------------------------
@@ -333,9 +333,21 @@ def execute_command(state: PDFAnalysisState) -> PDFAnalysisState:
 def interpret_results_and_update_findings(state: PDFAnalysisState) -> PDFAnalysisState:
     """LLM interprets last command output and updates findings."""
     last = state["command_history"][-1] if state["command_history"] else {}
+    
+    # For hex decoding commands, don't truncate the output so we can extract the full malicious payload
+    command = last.get("command", "")
+    original_output = last.get("output", "")
+    
+    if "echo" in command and "xxd" in command and "cat" in command:
+        # This is a hex decoding command - preserve full output
+        full_output = original_output
+    else:
+        # Regular command - truncate for token efficiency
+        full_output = original_output[:MAX_RAW_CHARS]
+    
     interp_prompt = INTERPRETER_PROMPT_TEMPLATE.format(
-        executed_command    = last.get("command", "N/A"),
-        command_output      = last.get("output", "")[:MAX_RAW_CHARS],
+        executed_command    = command,
+        command_output      = full_output,
         accumulated_findings= state["accumulated_findings"][-MAX_FINDINGS:]
     )
 
@@ -345,8 +357,11 @@ def interpret_results_and_update_findings(state: PDFAnalysisState) -> PDFAnalysi
     response = llm.invoke(messages_for_llm)
 
     try:
-        new_findings = safe_json_loads(response.content).get("new_findings", [])
-        code_blocks: dict[str, str] = safe_json_loads(response.content).get("code_blocks", {})
+        parsed_response = safe_json_loads(response.content)
+        new_findings = parsed_response.get("new_findings", [])
+        code_blocks: dict[str, str] = parsed_response.get("code_blocks", {})
+        
+        
         if not isinstance(new_findings, list):
             new_findings = ["Interpreter JSON format error."]
     except json.JSONDecodeError:
@@ -385,9 +400,10 @@ def compile_final_report(state: PDFAnalysisState) -> PDFAnalysisState:
     if state.get("code_blocks"):       
         artefacts = []
         artefacts.append("\n### Decoded / Extracted Code Artefacts")
+        
         for label, text in state["code_blocks"].items():
-            snippet = text if len(text) < 50000 else text[:50000] + " …(truncated)…"
-            artefacts.append(f"\n---- {label} ----\n{snippet}\n")
+            # Keep full content for malicious payloads - no truncation
+            artefacts.append(f"\n---- {label} ----\n{text}\n")
         final_text += "\n".join(artefacts)
     return {**state, "messages": state["messages"] + [response], "final_report": final_text}
 

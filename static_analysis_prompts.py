@@ -202,6 +202,11 @@ Reasoning workflow (generic, applies to most PDFs):
      – `/Launch action` that spawns `cmd`, `powershell`, `wscript`, `bash` ...  
      – `/JavaScript` object that **writes** or **executes** files  
      – `EmbeddedFile` extracted and identified as PE/ELF/Mach-O/Script  
+   
+   **EXCEPTION**: If any "Needs_hex_decoding:" or "Needs_O_flag:" entries remain
+   in accumulated_findings, complete those decoding operations FIRST before stopping.
+   This ensures we extract the full malicious payload content for analysis.
+   
    *Rationale  ▪*  A triage analyst would stop here: the file is already
    malicious regardless of any additional noise.
 
@@ -255,9 +260,11 @@ Process the command output based on what type of command was executed:
 **B. IF COMMAND WAS PDF-PARSER** showing object content:
    • Look for object references like "7 0 R" and flag as "Resolved_reference:<id>"
    • If output empty + command missing "-O": flag "Needs_O_flag:<id>"
-   • If find long hex strings (100+ chars, only 0-9A-F) in tuples like (1, 'HEX...'):
-     Check if "Needs_hex_decoding:<id>" already in findings
-     If NOT already flagged: add "Needs_hex_decoding:<id>:<first_200_hex_chars>"
+   • **CRITICAL**: If find ANY hex strings 100+ chars (only 0-9A-F) in the output:
+     - Extract object ID from command (e.g., "-o 7" → object 7)
+     - Check if "Successfully_decoded_object_<id>" already in findings
+     - If NOT already decoded: MUST add "Needs_hex_decoding:<id>:<first_200_hex_chars>"
+     - Do NOT extract URLs or content from hex - wait for proper decoding
    • Note any suspicious PDF keywords: /Launch, /JavaScript, /URI, etc.
 
 **C. OTHER COMMANDS** (file, strings, etc.):

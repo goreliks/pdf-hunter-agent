@@ -453,7 +453,7 @@ workflow.add_conditional_edges(
 workflow.add_edge("compile_report", END)
 
 # For persistence (optional, good for long-running tasks or debugging)
-memory = MemorySaver() 
+# memory = MemorySaver() 
 # app = workflow.compile(checkpointer=memory)
 
 app = workflow.compile()
@@ -476,9 +476,9 @@ if __name__ == "__main__":
             "messages": [] 
         }
 
-        thread_id = str(uuid.uuid4())
+        analysis_id = str(uuid.uuid4())[:8]
         
-        print(f"Starting analysis for PDF: {pdf_to_analyze} with Thread ID: {thread_id}")
+        print(f"Starting analysis for PDF: {pdf_to_analyze} with Analysis ID: {analysis_id}")
 
         final_event_state = None # Variable to store the last state from the stream
 
@@ -531,12 +531,12 @@ if __name__ == "__main__":
                 print(final_state_json_str)
 
                 # Save the full final state to a local JSON file
-                output_filename = f"pdf_analysis_report_{thread_id}.json"
+                output_filename = f"pdf_analysis_report_{analysis_id}.json"
                 with open(output_filename, 'w') as f:
                     json.dump(final_event_state, f, indent=2, default=lambda o: str(o))
                 # Save the final report as a markdown file if present
                 if final_event_state.get("final_report"):
-                    report_filename = f"pdf_analysis_report_{thread_id}.md"
+                    report_filename = f"pdf_analysis_report_{analysis_id}.md"
                     with open(report_filename, 'w') as f:
                         f.write(final_event_state["final_report"])
                     print(f"Final report saved to: {report_filename}")

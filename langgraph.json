@@ -1,0 +1,7 @@
+{
+    "dependencies": ["."],
+    "graphs": {
+      "agent": "./static_analysis_agent.py:app"
+    },
+    "env": ".env"
+  }

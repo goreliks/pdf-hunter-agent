@@ -91,7 +91,7 @@ Critical Constraints:
 *   You ONLY use the provided whitelisted shell commands.
 *   Inline Python (e.g. `python3 -c` or any script that is NOT one of {ALLOWED_PYTHON_SCRIPTS_STR}) is **strictly disallowed**.
 *   Track your progress – keep an internal list of every object ID you have already inspected so you never waste a command on the same object twice.
-*   Always resolve references – when tool output shows an indirect reference such as “17 0 R”, treat that object number as the next lead unless it is already inspected.
+*   Always resolve references – when tool output shows an indirect reference such as "17 0 R", treat that object number as the next lead unless it is already inspected.
 *   You interpret the *output* of these commands. You do not have direct access to the binary PDF.
 *   Your primary value is deep, reasoned analysis of PDF properties *as revealed by the tools* to uncover intent and capability.
 
@@ -143,57 +143,63 @@ Reasoning workflow (generic, applies to most PDFs):
    Otherwise skip the object stream and mark: **Ignored_ObjStm:<id>**.
 
 1. **Objects found inside an `/ObjStm`**  
-   When the Interpreter marks a reference as “(in ObjStm X)” choose:
+   When the Interpreter marks a reference as "(in ObjStm X)" choose:
       • `python3 pdf-parser.py -f -O -o <id> {pdf_filepath}`
-      • **If** the parent dump said “Contains stream” **or** the object’s
+      • **If** the parent dump said "Contains stream" **or** the object's
         own dictionary later shows `/Filter` or `Contains stream`, append
         `-c` so it becomes  
         `python3 pdf-parser.py -f -O -c -o <id> {pdf_filepath}`
 
-2. **Retry objects that need `-O -c`**  
+2. **Decode flagged encoding patterns (HIGHEST PRIORITY)**
+   If `accumulated_findings` contains "Needs_hex_decoding:X:HEX_STRING":
+   • Extract the hex string portion and decode with: `echo 'HEX_STRING' > hex.txt && xxd -r -p hex.txt decoded.bin && cat decoded.bin`
+   • For base64: `echo 'B64_STRING' > b64.txt && python3 b64decode.py -d b64.txt -o decoded.bin && cat decoded.bin`
+   • Only attempt decoding once per object ID
+
+3. **Retry objects that need `-O -c`**  
    If `accumulated_findings` contains any entry `Needs_O_flag:<id>`, schedule:  
    `python3 pdf-parser.py -f -O -c -o <id> {pdf_filepath}`  
    (Only one such id per iteration; pick the lowest id first.)
 
-3. **Unresolved references in normal objects**  
-   Scan `last_command_output` for “<number> 0 R”.  
+4. **Unresolved references in normal objects**  
+   Scan `last_command_output` for "<number> 0 R".  
    If that object is not yet inspected, run:  
    `python3 pdf-parser.py -f -o <number> {pdf_filepath}`
 
-4. **Decompress entire object streams**  
+5. **Decompress entire object streams**  
    If you encounter an object whose dictionary has `/Type /ObjStm` or the  
    Interpreter reports `ObjStm:<id>`, first decompress it with:  
    `python3 pdf-parser.py -f -o <objstm_id> {pdf_filepath}`  
    • Use `-c` when you also want the raw bytes of that object-stream itself.
 
-5. **Identify the encoding**
-   • If the suspicious string is long hex (only 0-9A-F without “=”), dump it and run:
+6. **General encoding identification**
+   • If the suspicious string is long hex (only 0-9A-F without "="), dump it and run:
      `xxd -r -p hex.txt raw.bin`  then `strings raw.bin`
-   • If the string has “+/=” padding and mixed upper/lower letters, it is Base-64, so:
+   • If the string has "+/=" padding and mixed upper/lower letters, it is Base-64, so:
      `python3 b64decode.py -d b64.txt -o raw.bin`
 
-6.  Prefix each sentence with a severity label in CAPS in square brackets,
+7.  Prefix each sentence with a severity label in CAPS in square brackets,
     choosing **CRITICAL**, **HIGH**, **MEDIUM**, **LOW**.  
     – Anything that directly executes code or downloads a payload ➜ CRITICAL  
     – Obfuscated JS without clear payload ➜ HIGH  
     – Benign URIs, images, fonts ➜ LOW
    
-7. **Suspicious actions**  
+8. **Suspicious actions**  
    • `/Launch`, `/JavaScript`, `/OpenAction`, `/AA`, `/URI`, `/EmbeddedFile`  
    • Inspect the hosting object, then decode any
-     hex (`xxd -r -p`), Base-64 (`python3 b64decode.py …`),
+     hex (`xxd -r -p`), Base-64 (`python3 b64decode.py ...`),
      or other encodings you uncover.
    • If the suspicious stream is still hex, the fastest path is: `echo '<hex>' | xxd -r -p`
 
-8. **Embedded file extraction**  
+9. **Embedded file extraction**  
    `python3 pdf-parser.py -d <id> dump.bin {pdf_filepath}`  then `file dump.bin`
 
-9. **Stop condition**  
-   ### EARLY-EXIT ON “DECISIVE” EVIDENCE
-   Return `"ANALYSIS_COMPLETE"` **immediately** if the accumulated findings
+10. **Stop condition**  
+   ### EARLY-EXIT ON "DECISIVE" EVIDENCE
+   Return "ANALYSIS_COMPLETE" **immediately** if the accumulated findings
    already contain at least one item whose *severity* is **Critical** or whose
    text matches any of these decisive patterns  
-     – `/Launch action` that spawns `cmd`, `powershell`, `wscript`, `bash` …  
+     – `/Launch action` that spawns `cmd`, `powershell`, `wscript`, `bash` ...  
      – `/JavaScript` object that **writes** or **executes** files  
      – `EmbeddedFile` extracted and identified as PE/ELF/Mach-O/Script  
    *Rationale  ▪*  A triage analyst would stop here: the file is already
@@ -231,49 +237,32 @@ CURRENT KNOWLEDGE BASE
 
 YOUR JOB
 ========
-1. Read the raw output carefully.  
-2. Extract *every* new, concrete piece of information that might indicate malicious
-   behaviour **or** clarify earlier leads, including:  
-   • newly revealed object IDs, streams, or embedded files
-        (add the id *only if* the header or first 200 B of the object contains a
-        suspicious keyword: Launch /JavaScript /EmbeddedFile /URI /AA /OpenAction /RichMedia /Encrypt /JS
-        or a filter chain suggesting obfuscation)
-   • any line like `obj <id> <gen>` that appears **inside an /ObjStm** – treat `<id>` as a fresh object reference (it will need `-O`)
-   • If the command’s output is completely empty *and* the executed command **did not** include “-O”
-     (i.e., it was likely an object inside an /ObjStm), add a finding in the exact form:
-     **Needs_O_flag:<id>**
-     where `<id>` is the object number you just tried.  This tells the Planner to rerun it with `-O -c`.
-   • decoded strings / URLs / commands
-   • If you decode ≥ 50 printable-character bytes that look like
-     source code or a command line **(ANY language)**:
-      ◦ Give it a short ID:  CODE_BLOCK:<object id>/<offset>
-      ◦ Store the first 500 chars verbatim in a new finding:
-          "CODE_BLOCK:7/0  ⟨language guess⟩  ⟨snippet…⟩"
-      ◦ Immediately follow with **one finding per observable behaviour**
-        that you can extract *with regex-level cues only*:
-          • network I/O  →  "Action: downloads https://…"
-          • file write   →  "Action: writes msd89h2j389uh.bat"
-          • persistence  →  "Action: copies file to Startup folder"
-          • AV tamper    →  "Action: disables Defender real-time protection"
-          • process exec →  "Action: runs Theme_Smart.scr"
-          • lure text    →  "Social-engineering: “PDF Encrypted. Please click”"
-        (One short sentence each.  No deep parsing required.)
-   • evidence of obfuscation (hex, Base-64, ASCII85, encryption)  
-   • If a contiguous hex or Base-64 blob is ≲ 32 kB, attempt an in-memory decode:  
-       – try hex → UTF-8 → printable? else keep raw bytes  
-       – try Base-64 → UTF-8 → printable?  
-     Summarise *what it looks like* (ASCII text, PE header, zlib, etc.) and include the first 500 chars in a new finding.  
-   • benign clarifications that *reduce* suspicion  
+Process the command output based on what type of command was executed:
 
-3. If the output shows any indirect reference like **“12 0 R”** and the object ID
-   has not been examined yet, add a finding exactly in this form (no spaces before the colon):  
-   **Resolved_reference:12**  
-   • If the reference appeared **inside a decompressed /ObjStm** add  
-     **(in ObjStm <parent_id>)** after the number, e.g.  
-     **Resolved_reference:7 (in ObjStm 1)**
+**A. IF COMMAND WAS HEX DECODING** (contains "echo" AND "xxd" AND "cat"):
+   • The output IS the decoded malicious content
+   • Create CODE_BLOCK: "DECODED_OBJECT_<id>" with the complete output
+   • Extract specific attack behaviors from the decoded text:
+     - "Malicious_URL: <any_https_urls_found>"
+     - "File_Creation: <any_bat_vbs_files_mentioned>"  
+     - "Persistence_Mechanism: <startup_folder_or_registry>"
+     - "AV_Evasion: <disable_monitoring_commands>"
+     - "Payload_Download: <executable_files_downloaded>"
+     - "Social_Engineering: <any_lure_text>"
+   • Add "Successfully_decoded_object_<id>" to mark this object as processed
+   • DO NOT flag for hex decoding again
 
-4. Write each finding in one concise sentence:  
-   • *What* it is • *Where* you saw it • *Why* it matters.
+**B. IF COMMAND WAS PDF-PARSER** showing object content:
+   • Look for object references like "7 0 R" and flag as "Resolved_reference:<id>"
+   • If output empty + command missing "-O": flag "Needs_O_flag:<id>"
+   • If find long hex strings (100+ chars, only 0-9A-F) in tuples like (1, 'HEX...'):
+     Check if "Needs_hex_decoding:<id>" already in findings
+     If NOT already flagged: add "Needs_hex_decoding:<id>:<first_200_hex_chars>"
+   • Note any suspicious PDF keywords: /Launch, /JavaScript, /URI, etc.
+
+**C. OTHER COMMANDS** (file, strings, etc.):
+   • Extract any new file types, URLs, or suspicious content found
+   • Note any indicators of malicious behavior
 
 OUTPUT FORMAT
 =============
@@ -286,7 +275,7 @@ Return **raw JSON** with a single key; do **not** wrap it in fences.
     "… more findings …"
   ],
   "code_blocks": {{
-    "CODE_BLOCK:4/0": "powershell -Command \"Set-MpPreference…"
+    "DECODED_OBJECT_4": "powershell -Command \"Set-MpPreference…"
   }}
 }}
 """

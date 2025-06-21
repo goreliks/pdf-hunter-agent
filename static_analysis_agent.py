@@ -24,7 +24,7 @@ load_dotenv()
 from static_analysis_prompts import SYSTEM_PROMPT_CONTENT, PLANNER_PROMPT_TEMPLATE, INTERPRETER_PROMPT_TEMPLATE
 
 # ---------- TOKEN-BUDGET CONSTANTS ----------
-MAX_RAW_CHARS      = 10000   # keep at most this many characters of the last tool output (increased from 2000)
+MAX_RAW_CHARS      = 50000   # keep at most this many characters of the last tool output (increased for hex decoding)
 MAX_FINDINGS       = 30     # keep only the newest N findings per prompt
 MAX_DIALOG_TURNS   = 6      # last N AI/Human messages + the (mini) system prompt
 # -------------------------------------------
@@ -67,6 +67,7 @@ class SafeShellTool(BaseTool):
         "file", "grep", "cat", "strings",
         "xxd",          # hex ⇄ raw
         "head", "tail",
+        "echo",         # for hex decoding workflows
     ]
 
     # Allowlist of Python scripts. Assumes they are found relative to CWD or have paths.

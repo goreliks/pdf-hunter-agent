@@ -43,8 +43,8 @@ ENV/
 # Logs and outputs
 *.log
 outputs/
-!langgraph.json
 *.json
+!langgraph.json
 
 # OS specific
 .DS_Store
@@ -55,4 +55,5 @@ outputs/
 ehthumbs.db
 Thumbs.db
 
-tests/fixtures/87c740d2b7c22f9ccabbdef412443d166733d4d925da0e8d6e5b310ccfc89e13.pdf
+87c740d2b7c22f9ccabbdef412443d166733d4d925da0e8d6e5b310ccfc89e13.pdf
+pdf_analysis_report_*

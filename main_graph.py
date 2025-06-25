@@ -181,12 +181,12 @@ def finalize_analysis(state: MainGraphState) -> MainGraphState:
 # --- Build the Main Graph ---
 workflow = StateGraph(MainGraphState)
 workflow.add_node("validate", validate_and_initialize)
-workflow.add_node("analyze", run_static_analysis_subgraph)
+workflow.add_node("static_analysis", run_static_analysis_subgraph)
 workflow.add_node("finalize", finalize_analysis)
 
 workflow.add_edge(START, "validate")
-workflow.add_edge("validate", "analyze")
-workflow.add_edge("analyze", "finalize")
+workflow.add_edge("validate", "static_analysis")
+workflow.add_edge("static_analysis", "finalize")
 workflow.add_edge("finalize", END)
 
 # Compile the graph
